@@ -11,26 +11,24 @@ st.title("🚨 Intrusion Detection System (NSL-KDD)")
 # ==========================================================
 def safe_load(path, name):
     try:
-        obj = joblib.load(path)
-        return obj
+        return joblib.load(path)
     except Exception as e:
-        st.error(f"❌ Could not load {name}: {e}")
+        st.error(f"❌ Error loading {name}: {e}")
         st.stop()
 
+model = safe_load("xgb_model.pkl", "xgb_model.pkl")
+scaler = safe_load("scaler.pkl", "scaler.pkl")
+selector = safe_load("selector.pkl", "selector.pkl")
+label_encoders = safe_load("label_map.pkl", "label_map.pkl")
 
-model = joblib.load("xgb_model.pkl")
-scaler = joblib.load("scaler.pkl")
-selector = joblib.load("selector.pkl")
-label_encoders = joblib.load("label_map.pkl")   # dict: protocol, service, flag
-
-if not isinstance(encoders, dict):
-    st.error("❌ encoders.joblib exists but is not a dictionary!")
+if not isinstance(label_encoders, dict):
+    st.error("❌ label_map.pkl should contain a dictionary of label encoders!")
     st.stop()
 
 st.success("✅ All model files loaded successfully!")
 
 # ==========================================================
-# COLUMN NAMES (same as training)
+# ORIGINAL NSL-KDD COLUMN NAMES
 # ==========================================================
 col_names = [
     'duration','protocol_type','service','flag','src_bytes','dst_bytes','land',
@@ -47,16 +45,14 @@ col_names = [
 # ==========================================================
 # FILE UPLOADER
 # ==========================================================
-st.subheader("📂 Upload a raw NSL-KDD .txt or .csv file")
+st.subheader("📂 Upload Raw NSL-KDD Test File (.txt or .csv)")
 
-uploaded = st.file_uploader("Upload dataset (.txt or .csv)", type=["txt", "csv"])
+uploaded = st.file_uploader("Upload dataset", type=["txt", "csv"])
 
 if uploaded is not None:
     st.info("File uploaded. Processing...")
 
-    # ======================================================
-    # READ RAW FILE
-    # ======================================================
+    # Load input file
     try:
         if uploaded.name.endswith(".txt"):
             df = pd.read_csv(uploaded, names=col_names)
@@ -66,37 +62,33 @@ if uploaded is not None:
         st.error(f"❌ Could not read file: {e}")
         st.stop()
 
-    if "label" not in df.columns:
-        st.warning("⚠️ No label column found — treating as unlabeled test data.")
-
-    # Remove unused columns
-    for c in ["label", "difficulty"]:
-        if c in df.columns:
-            df = df.drop(columns=[c])
+    # Drop unused columns
+    df = df.drop(columns=["label", "difficulty"], errors="ignore")
 
     # ======================================================
     # APPLY LABEL ENCODERS
     # ======================================================
-    cat_cols = ["protocol_type", "service", "flag"]
+    categorical_cols = ["protocol_type", "service", "flag"]
 
-    for c in cat_cols:
-        if c not in df.columns:
-            st.error(f"❌ Missing categorical column: {c}")
+    for col in categorical_cols:
+        if col not in df.columns:
+            st.error(f"❌ Missing categorical column: {col}")
             st.stop()
 
-        le = encoders.get(c)
-        if le is None:
-            st.error(f"❌ Encoder missing for column: {c}")
+        if col not in label_encoders:
+            st.error(f"❌ No label encoder found for {col}.")
             st.stop()
+
+        le = label_encoders[col]
 
         try:
-            df[c] = le.transform(df[c])
-        except:
-            st.error(f"❌ Unknown category value encountered in {c}. Clean your input file.")
+            df[col] = le.transform(df[col])
+        except Exception:
+            st.error(f"❌ Unknown category in column {col}. Clean your data.")
             st.stop()
 
     # ======================================================
-    # SCALING
+    # SCALE INPUT
     # ======================================================
     try:
         X_scaled = scaler.transform(df)
@@ -110,7 +102,7 @@ if uploaded is not None:
     try:
         X_sel = selector.transform(X_scaled)
     except Exception as e:
-        st.error(f"❌ Feature selection failed: {e}")
+        st.error(f"❌ Feature selection error: {e}")
         st.stop()
 
     # ======================================================
@@ -122,8 +114,10 @@ if uploaded is not None:
         st.error(f"❌ Prediction error: {e}")
         st.stop()
 
-    # Reverse label map
-    label_map = {
+    # ======================================================
+    # MAP PREDICTED LABELS
+    # ======================================================
+    reverse_map = {
         0: "dos",
         1: "normal",
         2: "probe",
@@ -131,17 +125,16 @@ if uploaded is not None:
         4: "u2r"
     }
 
-    df_results = pd.DataFrame({
-        "Prediction": [label_map.get(p, "unknown") for p in preds]
-    })
+    pred_labels = [reverse_map.get(p, "unknown") for p in preds]
 
+    # Display results
     st.subheader("📊 Predictions")
-    st.dataframe(df_results)
+    results_df = pd.DataFrame({"Prediction": pred_labels})
+    st.dataframe(results_df)
 
-    # Summary
     st.subheader("📌 Summary")
-    st.write(df_results["Prediction"].value_counts())
+    st.write(results_df["Prediction"].value_counts())
 
-
-st.markdown("---")
-st.caption("Created for NSL-KDD Intrusion Detection System")
+    # Download button
+    csv_download = results_df.to_csv(index=False).encode("utf-8")
+    st.download_button("⬇ Download Predictions CSV", csv_download, "predictions.csv", "text/csv")
