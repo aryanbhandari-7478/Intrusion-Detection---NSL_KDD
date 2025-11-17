@@ -8,7 +8,7 @@ st.set_page_config(page_title="Intrusion Detection Dashboard", layout="wide")
 st.markdown("""
     <div style='display: flex; justify-content: space-between; align-items: center;'>
         <h1 style='margin: 0;'>🔐 Intrusion Detection Dashboard (NSL-KDD)</h1>
-        <h3 style='margin: 0; opacity: 0.7;'>Aryan</h3>
+        <h3 style='margin: 0; opacity: 0.7;'>Developed by Aryan Bhandari</h3>
     </div>
 """, unsafe_allow_html=True)
 
@@ -220,5 +220,6 @@ st.write(out_df["prediction"].value_counts())
 
 # allow download
 st.download_button("Download predictions CSV", out_df.to_csv(index=False).encode("utf-8"), "predictions.csv")
+
 
 
