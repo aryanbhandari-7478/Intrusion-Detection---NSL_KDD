@@ -1,7 +1,11 @@
 # Intrusion-Detection---NSL_KDD
 
-joblib
-scikit-learn
+streamlit
 pandas
 numpy
-streamlit
+scikit-learn
+joblib
+matplotlib
+seaborn
+imbalanced-learn
+
