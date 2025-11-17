@@ -11,78 +11,99 @@ scaler = joblib.load("scaler.pkl")
 selector = joblib.load("selector.pkl")
 label_encoders = joblib.load("label_map.pkl")   # dict: protocol, service, flag
 
-# -----------------------------
-# ATTACK LABEL MAP
-# -----------------------------
-inv_label_map = {0: "dos", 1: "normal", 2: "probe", 3: "r2l", 4: "u2r"}
+# ------------------------------------
+# Official NSL-KDD 42 feature columns
+# ------------------------------------
+nsl_kdd_columns = [
+    "duration","protocol_type","service","flag","src_bytes","dst_bytes","land","wrong_fragment",
+    "urgent","hot","num_failed_logins","logged_in","num_compromised","root_shell","su_attempted",
+    "num_root","num_file_creations","num_shells","num_access_files","num_outbound_cmds",
+    "is_host_login","is_guest_login","count","srv_count","serror_rate","srv_serror_rate",
+    "rerror_rate","srv_rerror_rate","same_srv_rate","diff_srv_rate","srv_diff_host_rate",
+    "dst_host_count","dst_host_srv_count","dst_host_same_srv_rate","dst_host_diff_srv_rate",
+    "dst_host_same_src_port_rate","dst_host_srv_diff_host_rate","dst_host_serror_rate",
+    "dst_host_srv_serror_rate","dst_host_rerror_rate","dst_host_srv_rerror_rate","label"
+]
 
 # -----------------------------
-# STREAMLIT UI
+# Streamlit UI
 # -----------------------------
-st.set_page_config(page_title="Intrusion Detection Dashboard", layout="wide")
+st.title("🔐 Intrusion Detection System (NSL-KDD)")
+st.write("Upload dataset (TXT or CSV) and get predictions.")
 
-st.title("🚨 Intrusion Detection System (IDS) Dashboard")
-st.write("Upload sample network traffic data and the model will predict attack categories.")
+uploaded_file = st.file_uploader("Upload NSL-KDD file", type=["txt", "csv"])
 
-st.markdown("---")
-
-# -----------------------------
-# FILE UPLOAD
-# -----------------------------
-uploaded = st.file_uploader("Upload CSV file", type=["csv"])
-
-if uploaded:
-    df = pd.read_csv(uploaded)
-
-    st.write("### 📌 Uploaded Data Preview")
-    st.dataframe(df.head())
-
+if uploaded_file:
     try:
         # -----------------------------
-        # APPLY SAME PREPROCESSING
+        # Load TXT file (assign headers)
         # -----------------------------
-
-        # Label encoding for 3 columns
-        for col in ["protocol_type", "service", "flag"]:
-            le = label_encoders[col]
-            df[col] = le.transform(df[col])
-
-        # Scale features
-        X_scaled = scaler.transform(df)
-
-        # Select features
-        X_selected = selector.transform(X_scaled)
-
-        # Predict
-        preds = model.predict(X_selected)
-
-        df["predicted_class"] = preds
-        df["predicted_label"] = df["predicted_class"].map(inv_label_map)
-
-        st.markdown("---")
-        st.write("### ✅ Predictions")
-        st.dataframe(df[["predicted_label"]].head(20))
+        if uploaded_file.name.endswith(".txt"):
+            df = pd.read_csv(uploaded_file, header=None)
+            if df.shape[1] == 42:
+                df.columns = nsl_kdd_columns
+            else:
+                st.error(f"TXT file must have 42 columns. Found: {df.shape[1]}")
+                st.stop()
 
         # -----------------------------
-        # COUNTS + SIMPLE VISUALIZATION
+        # Load CSV normally
         # -----------------------------
-        st.markdown("### 📊 Prediction Distribution")
-        counts = df["predicted_label"].value_counts()
+        else:
+            df = pd.read_csv(uploaded_file)
 
-        st.bar_chart(counts)
+        st.subheader("📌 Preview of Uploaded Data")
+        st.dataframe(df.head())
 
         # -----------------------------
-        # DOWNLOAD RESULTS
+        # Drop label column if exists
         # -----------------------------
-        st.download_button(
-            label="📥 Download Predictions CSV",
-            data=df.to_csv(index=False),
-            file_name="predictions.csv",
-            mime="text/csv"
-        )
+        if "label" in df.columns:
+            df = df.drop(columns=["label"])
+
+        # -----------------------------
+        # Encode categorical columns
+        # -----------------------------
+        for col, le in encoders.items():
+            if col in df.columns:
+                df[col] = le.transform(df[col])
+
+        # -----------------------------
+        # Feature Selection
+        # -----------------------------
+        df_selected = selector.transform(df)
+
+        # -----------------------------
+        # Scaling
+        # -----------------------------
+        df_scaled = scaler.transform(df_selected)
+
+        # -----------------------------
+        # Prediction
+        # -----------------------------
+        preds = model.predict(df_scaled)
+
+        # Optional mapping (your choice)
+        mapping = {
+            0: "normal",
+            1: "dos",
+            2: "probe",
+            3: "r2l",
+            4: "u2r"
+        }
+        pred_labels = [mapping[p] for p in preds]
+
+        # -----------------------------
+        # Output
+        # -----------------------------
+        st.subheader("🔎 Prediction Results")
+        result_df = pd.DataFrame({
+            "prediction": pred_labels
+        })
+
+        st.dataframe(result_df)
+
+        st.success("Prediction completed successfully.")
 
     except Exception as e:
         st.error(f"Error while processing: {str(e)}")
-else:
-    st.info("Upload a CSV file to get predictions.")
-
