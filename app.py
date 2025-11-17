@@ -6,10 +6,10 @@ import numpy as np
 # -----------------------------
 # LOAD MODEL + PREPROCESSORS
 # -----------------------------
-model = joblib.load("model.pkl")
+model = joblib.load("xgb_model.pkl")
 scaler = joblib.load("scaler.pkl")
 selector = joblib.load("selector.pkl")
-label_encoders = joblib.load("label_encoders.pkl")   # dict: protocol, service, flag
+label_encoders = joblib.load("label_map.pkl")   # dict: protocol, service, flag
 
 # -----------------------------
 # ATTACK LABEL MAP
@@ -85,3 +85,4 @@ if uploaded:
         st.error(f"Error while processing: {str(e)}")
 else:
     st.info("Upload a CSV file to get predictions.")
+
